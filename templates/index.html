@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Transmission News Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f9;
+            display: flex;
+            justify-content: center;
+            padding-top: 40px;
+        }
+
+        .container {
+            background: white;
+            width: 980px;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        .subtext {
+            text-align: center;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .last-updated {
+            text-align: center;
+            color: #888;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+
+        .refresh-form {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        .refresh-btn {
+            background: #2c5aa0;
+            color: white;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .news-card {
+            background: #f9fafc;
+            border-left: 4px solid #2c5aa0;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 6px;
+        }
+
+        .news-title a {
+            text-decoration: none;
+            color: #1a1a1a;
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        .news-title a:hover {
+            text-decoration: underline;
+        }
+
+        .meta {
+            margin-top: 8px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .score {
+            margin-top: 6px;
+            font-size: 14px;
+            color: #2c5aa0;
+            font-weight: bold;
+        }
+
+        .tag {
+            display: inline-block;
+            margin-top: 10px;
+            margin-right: 8px;
+            padding: 5px 10px;
+            background: #e8eef9;
+            color: #2c5aa0;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: bold;
+        }
+
+        .summary {
+            margin-top: 12px;
+            padding: 12px;
+            background: #eef3fb;
+            border-radius: 6px;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .no-news {
+            text-align: center;
+            color: #888;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Top 5 Global Transmission Line News</h1>
+        <div class="subtext">Last 30 days | Filtered, ranked, and AI summarised</div>
+        <div class="last-updated">Last Updated: {{ last_updated }}</div>
+
+        <div class="refresh-form">
+            <form method="POST">
+                <button type="submit" class="refresh-btn">Refresh News</button>
+            </form>
+        </div>
+
+        {% if news_items %}
+            {% for item in news_items %}
+                <div class="news-card">
+                    <div class="news-title">
+                        <a href="{{ item.link }}" target="_blank">{{ item.clean_title }}</a>
+                    </div>
+
+                    <div class="meta">
+                        Source: {{ item.source }} | Published: {{ item.published }}
+                    </div>
+
+                    <div class="score">
+                        Importance Score: {{ item.score }}
+                    </div>
+
+                    <div>
+                        <span class="tag">{{ item.category }}</span>
+                        <span class="tag">{{ item.country }}</span>
+                    </div>
+
+                    <div class="summary">
+                        <b>AI Summary:</b> {{ item.ai_summary }}
+                    </div>
+                </div>
+            {% endfor %}
+        {% else %}
+            <div class="no-news">No relevant news found in the last 30 days.</div>
+        {% endif %}
+    </div>
+</body>
+</html>
