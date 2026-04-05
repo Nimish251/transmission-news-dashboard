@@ -6,20 +6,25 @@ api_key = os.environ.get("GROQ_API_KEY")
 client = Groq(api_key=api_key) if api_key else None
 
 
-def generate_ai_summary(title, category, country):
+def generate_ai_summary(text, region, country):
+
     if not client:
-        return "AI summary unavailable. GROQ_API_KEY not set."
+        return "⚠️ AI summary unavailable (API key missing)"
 
     prompt = f"""
-    You are helping build a transmission line news dashboard.
-    Summarize this news item in one short sentence.
-    Focus on why it matters for transmission, grid, utilities, or power infrastructure.
+    You are a power sector analyst.
 
-    Title: {title}
-    Category: {category}
-    Country: {country}
+    Summarize the following transmission news from {region} into 3 bullet points.
 
-    Keep the answer under 25 words.
+    Focus on:
+    - Major projects
+    - Investments
+    - Grid expansion
+
+    Keep each point under 15 words.
+
+    News:
+    {text}
     """
 
     try:
@@ -30,5 +35,6 @@ def generate_ai_summary(title, category, country):
 
         return chat_completion.choices[0].message.content.strip()
 
-    except Exception:
-        return "AI summary could not be generated."
+    except Exception as e:
+        print("AI ERROR:", e)
+        return "⚠️ AI summary failed"

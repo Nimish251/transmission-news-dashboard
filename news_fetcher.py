@@ -1,109 +1,135 @@
 import feedparser
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
+from urllib.parse import quote
 
 from scorer import is_relevant, get_importance_score, extract_country
 from summarizer import generate_ai_summary
 
 
-def clean_title(title):
-    if " - " in title:
-        parts = title.rsplit(" - ", 1)
-        return parts[0].strip()
-    return title.strip()
+REGION_CONFIG = {
+    "India": ["india"],
+    "South-East Asia": ["indonesia", "vietnam", "thailand", "malaysia", "philippines"],
+    "Europe": ["germany", "france", "italy", "spain", "poland", "netherlands", "uk", "sweden", "norway"],
+    "CIS": ["kazakhstan", "uzbekistan", "azerbaijan"],
+    "Africa": ["south africa", "egypt", "kenya", "nigeria", "morocco"],
+    "Middle-East": ["uae", "saudi arabia", "qatar", "oman"],
+    "Australia": ["australia"],
+    "North America": ["usa", "canada"],
+    "South America": ["brazil", "argentina", "chile", "mexico"]
+}
 
 
-def extract_source(title):
-    if " - " in title:
-        parts = title.rsplit(" - ", 1)
-        return parts[1].strip()
-    return "Unknown Source"
-
-
-def classify_news(title):
-    title_lower = title.lower()
-
-    if any(word in title_lower for word in ["tender", "bid", "award", "awarded", "contract"]):
-        return "Tender"
-    elif any(word in title_lower for word in ["commissioned", "energized", "operational", "in service"]):
-        return "Commissioning"
-    elif any(word in title_lower for word in ["investment", "funding", "billion", "million"]):
-        return "Investment"
-    elif any(word in title_lower for word in ["policy", "approval", "approved", "regulation"]):
-        return "Policy"
-    else:
-        return "Project Update"
-
-
-def remove_duplicates(news_items):
-    seen_titles = set()
-    unique_items = []
-
-    for item in news_items:
-        normalized_title = item["clean_title"].lower()
-        if normalized_title not in seen_titles:
-            seen_titles.add(normalized_title)
-            unique_items.append(item)
-
-    return unique_items
-
-
-def is_within_last_30_days(published_text):
+def is_recent(published_text):
     try:
-        published_date = parsedate_to_datetime(published_text)
+        dt = parsedate_to_datetime(published_text)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
 
-        if published_date.tzinfo is None:
-            published_date = published_date.replace(tzinfo=timezone.utc)
-
-        now = datetime.now(timezone.utc)
-        cutoff = now - timedelta(days=30)
-
-        return published_date >= cutoff
-    except Exception:
+        return dt >= datetime.now(timezone.utc) - timedelta(days=7)
+    except:
         return False
 
 
-def get_news(limit=5):
-    url = "https://news.google.com/rss/search?q=(transmission+line+OR+power+transmission+OR+hvdc+OR+interconnector+OR+substation)&hl=en-IN&gl=IN&ceid=IN:en"
+def detect_region(country):
+    country_lower = country.lower()
 
-    feed = feedparser.parse(url)
-    news_items = []
+    for region, countries in REGION_CONFIG.items():
+        for c in countries:
+            if c in country_lower:
+                return region
 
-    for entry in feed.entries:
-        original_title = entry.title
-        clean_news_title = clean_title(original_title)
-        source = extract_source(original_title)
-        link = entry.link
-        published = getattr(entry, "published", "No date available")
+    return "Other"
 
-        if not is_within_last_30_days(published):
-            continue
 
-        if is_relevant(clean_news_title):
-            score = get_importance_score(clean_news_title)
-            category = classify_news(clean_news_title)
-            country = extract_country(clean_news_title)
+def remove_duplicates(items):
+    seen = set()
+    unique = []
 
-            news_items.append({
-                "title": original_title,
-                "clean_title": clean_news_title,
-                "source": source,
+    for item in items:
+        key = item["title"].lower()
+        if key not in seen:
+            seen.add(key)
+            unique.append(item)
+
+    return unique
+
+
+def fetch_news():
+    all_items = []
+
+    for region, countries in REGION_CONFIG.items():
+
+        query = " OR ".join(countries)
+        encoded_query = quote(f"({query}) (transmission OR grid OR substation OR hvdc)")
+
+        url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-IN&gl=IN&ceid=IN:en"
+
+        feed = feedparser.parse(url)
+
+        for entry in feed.entries:
+            title = entry.title
+            link = entry.link
+            published = getattr(entry, "published", "")
+
+            if not is_recent(published):
+                continue
+
+            if not is_relevant(title):
+                continue
+
+            score = get_importance_score(title)
+
+            if score <= 0:
+                continue
+
+            try:
+                dt = parsedate_to_datetime(published)
+                published_clean = dt.strftime("%d %b %Y")
+            except:
+                published_clean = "Recent"
+
+            country = extract_country(title)
+            region_detected = detect_region(country)
+
+            all_items.append({
+                "title": title,
                 "link": link,
-                "published": published,
+                "published": published_clean,
+                "country": country,
+                "region": region_detected,
                 "score": score,
-                "category": category,
-                "country": country
+                "source": "Google News"
             })
 
-    news_items = remove_duplicates(news_items)
-    news_items = sorted(news_items, key=lambda x: x["score"], reverse=True)
-    news_items = news_items[:limit]
+    return remove_duplicates(all_items)
 
-    for item in news_items:
-        item["ai_summary"] = generate_ai_summary(
-            item["clean_title"],
-            item["category"],
-            item["country"]
-        )
 
-    return news_items
+def get_news():
+    all_items = fetch_news()
+
+    region_news = {region: [] for region in REGION_CONFIG.keys()}
+
+    for item in all_items:
+        region = item["region"]
+        if region in region_news:
+            region_news[region].append(item)
+
+    final_output = {}
+
+    for region, items in region_news.items():
+        if not items:
+            continue
+
+        items = sorted(items, key=lambda x: x["score"], reverse=True)[:10]
+
+        combined_text = "\n".join([i["title"] for i in items])
+
+        summary = generate_ai_summary(combined_text, region, "Multiple") if combined_text else "No major updates."
+
+        final_output[region] = {
+            "news": items,
+            "summary": summary
+        }
+
+    return final_output
